@@ -1,5 +1,6 @@
 import { IssueType, IssueTypeName } from '@server/constants/issue';
 import { MediaType } from '@server/constants/media';
+import { MediaServerType } from '@server/constants/server';
 import { getRepository } from '@server/datasource';
 import { User } from '@server/entity/User';
 import PreparedEmail from '@server/lib/email';
@@ -78,6 +79,30 @@ class EmailAgent
     const { embedPoster } = settings.notifications.agents.email;
     const mediaServerName = getAvailableMediaServerName(mediaServerType);
     const mediaServerUrl = getAvailableMediaServerUrl(payload);
+
+    function getAvailableMediaServerName() {
+      if (mediaServerType === MediaServerType.EMBY) {
+        return 'Emby';
+      }
+
+      if (mediaServerType === MediaServerType.PLEX) {
+        return 'Plex';
+      }
+
+      return 'Jellyfin';
+    }
+
+    const mediaServerName = getAvailableMediaServerName();
+
+    function getAvailableMediaServerUrl(): string | undefined {
+      const wants4k = payload.request?.is4k;
+      const url4k = (payload.media as any)?.mediaUrl4k as string | undefined;
+      const url = (payload.media as any)?.mediaUrl as string | undefined;
+
+      return (wants4k ? (url4k ?? url) : (url ?? url4k)) || undefined;
+    }
+
+    const mediaServerUrl = getAvailableMediaServerUrl();
 
     if (type === Notification.TEST_NOTIFICATION) {
       return {
@@ -254,20 +279,20 @@ class EmailAgent
           type: Notification[type],
           subject: payload.subject,
         });
-
         try {
           const email = new PreparedEmail(
             this.getSettings(),
             payload.notifyUser.settings?.pgpKey
           );
-          if (
-            validator.isEmail(payload.notifyUser.email, { require_tld: false })
-          ) {
+          const userEmail =
+            payload.notifyUser.settings?.notifyEmail ||
+            payload.notifyUser.email;
+          if (validator.isEmail(userEmail, { require_tld: false })) {
             await email.send(
               this.buildMessage(
                 type,
                 payload,
-                payload.notifyUser.email,
+                userEmail,
                 payload.notifyUser.displayName
               )
             );
@@ -324,9 +349,10 @@ class EmailAgent
                 this.getSettings(),
                 user.settings?.pgpKey
               );
-              if (validator.isEmail(user.email, { require_tld: false })) {
+              const userEmail = user.settings?.notifyEmail || user.email;
+              if (validator.isEmail(userEmail, { require_tld: false })) {
                 await email.send(
-                  this.buildMessage(type, payload, user.email, user.displayName)
+                  this.buildMessage(type, payload, userEmail, user.displayName)
                 );
               } else {
                 logger.warn('Invalid email address provided for user', {
