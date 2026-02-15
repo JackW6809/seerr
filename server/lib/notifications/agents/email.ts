@@ -257,8 +257,7 @@ class EmailAgent
               this.buildMessage(
                 type,
                 payload,
-                payload.notifyUser.settings?.notifyEmail ||
-                  payload.notifyUser.email,
+                userEmail,
                 payload.notifyUser.displayName
               )
             );
